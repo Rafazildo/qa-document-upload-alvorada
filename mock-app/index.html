@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document Upload & Data Extraction</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f7fa;
+      color: #1a1a2e;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    main {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #0f172a; }
+    h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #334155; }
+
+    .field { margin-bottom: 1rem; }
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; color: #475569; }
+
+    input[type="text"], textarea {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus, textarea:focus {
+      outline: none;
+      border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+
+    .file-drop-area {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 1rem;
+    }
+    .file-drop-area:hover, .file-drop-area.drag-over {
+      border-color: #6366f1;
+      background: #eef2ff;
+    }
+    .file-drop-area p { color: #64748b; font-size: 0.9rem; margin-top: 0.4rem; }
+
+    input[type="file"] { display: none; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.6rem 1.4rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #4f46e5; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover:not(:disabled) { background: #cbd5e1; }
+
+    .alert {
+      padding: 0.75rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+    }
+    .alert-error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .alert-success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 1.5rem auto 0.75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .processing-section {
+      text-align: center;
+      padding: 1rem 0;
+      color: #64748b;
+    }
+
+    .actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; }
+
+    section { display: none; }
+    section.active { display: block; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Document Upload &amp; Data Extraction</h1>
+
+  <!-- UPLOAD SECTION -->
+  <section id="upload-section" class="active">
+    <div class="file-drop-area" id="drop-area" role="button" tabindex="0" aria-label="Click or drag to upload a PDF file">
+      <strong>Click to select or drag &amp; drop</strong>
+      <p>PDF files only — max 10 MB</p>
+    </div>
+    <input type="file" id="file-input" accept=".pdf,application/pdf" data-testid="file-input" aria-label="Select PDF file" />
+    <div id="file-name-display" style="font-size:0.85rem;color:#475569;margin-bottom:0.75rem;min-height:1.2em;"></div>
+
+    <div id="file-error" class="alert alert-error" data-testid="file-error" role="alert" style="display:none;"></div>
+
+    <button id="upload-btn" class="btn btn-primary" data-testid="upload-btn" disabled>
+      Upload &amp; Process
+    </button>
+  </section>
+
+  <!-- PROCESSING SECTION -->
+  <section id="processing-section">
+    <div class="processing-section" data-testid="processing-section">
+      <div class="spinner" aria-hidden="true"></div>
+      <p data-testid="processing-status">Processing your document…</p>
+      <p style="font-size:0.8rem;margin-top:0.4rem;color:#94a3b8;">This may take a few seconds</p>
+    </div>
+  </section>
+
+  <!-- EXTRACTED DATA SECTION -->
+  <section id="extracted-data-section">
+    <h2>Extracted Data</h2>
+    <p style="font-size:0.85rem;color:#64748b;margin-bottom:1rem;">
+      Review and edit the extracted information before saving.
+    </p>
+    <form id="data-form" data-testid="data-form" novalidate>
+      <div class="field">
+        <label for="field-title">Title <span style="color:#dc2626">*</span></label>
+        <input type="text" id="field-title" name="title" data-testid="field-title" required placeholder="Document title" />
+      </div>
+      <div class="field">
+        <label for="field-author">Author</label>
+        <input type="text" id="field-author" name="author" data-testid="field-author" placeholder="Author name" />
+      </div>
+      <div class="field">
+        <label for="field-date">Date</label>
+        <input type="text" id="field-date" name="date" data-testid="field-date" placeholder="e.g. 2024-01-15" />
+      </div>
+      <div class="field">
+        <label for="field-content">Content Summary</label>
+        <textarea id="field-content" name="content" data-testid="field-content" placeholder="Summary of the document content"></textarea>
+      </div>
+
+      <div id="save-error" class="alert alert-error" data-testid="save-error" role="alert" style="display:none;"></div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary" data-testid="save-btn">Save Data</button>
+        <button type="button" class="btn btn-secondary" id="upload-another-btn" data-testid="upload-another-btn">Upload Another</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- ERROR SECTION -->
+  <section id="error-section">
+    <div class="alert alert-error" data-testid="error-message" id="error-message" role="alert"></div>
+    <button class="btn btn-secondary" id="retry-btn" data-testid="retry-btn">Try Again</button>
+  </section>
+
+  <!-- SUCCESS SECTION -->
+  <section id="success-section">
+    <div class="alert alert-success" data-testid="success-message" role="status">
+      Data saved successfully!
+    </div>
+    <button class="btn btn-secondary" style="margin-top:1rem;" id="new-upload-btn" data-testid="new-upload-btn">Upload Another Document</button>
+  </section>
+</main>
+
+<script>
+  const API_BASE = '/api';
+
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  const sections = {
+    upload:    document.getElementById('upload-section'),
+    processing: document.getElementById('processing-section'),
+    extracted: document.getElementById('extracted-data-section'),
+    error:     document.getElementById('error-section'),
+    success:   document.getElementById('success-section'),
+  };
+
+  const fileInput      = document.getElementById('file-input');
+  const dropArea       = document.getElementById('drop-area');
+  const uploadBtn      = document.getElementById('upload-btn');
+  const fileNameDisplay = document.getElementById('file-name-display');
+  const fileError      = document.getElementById('file-error');
+  const dataForm       = document.getElementById('data-form');
+  const saveError      = document.getElementById('save-error');
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  function showSection(name) {
+    Object.values(sections).forEach(s => s.classList.remove('active'));
+    sections[name].classList.add('active');
+  }
+
+  function showFileError(msg) {
+    fileError.textContent = msg;
+    fileError.style.display = 'block';
+  }
+
+  function hideFileError() {
+    fileError.style.display = 'none';
+  }
+
+  function isPdf(file) {
+    return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+  }
+
+  function populateForm(data) {
+    document.getElementById('field-title').value   = data.title   || '';
+    document.getElementById('field-author').value  = data.author  || '';
+    document.getElementById('field-date').value    = data.date    || '';
+    document.getElementById('field-content').value = data.content || '';
+  }
+
+  function resetUpload() {
+    fileInput.value = '';
+    fileNameDisplay.textContent = '';
+    uploadBtn.disabled = true;
+    hideFileError();
+    showSection('upload');
+  }
+
+  // ── File selection ────────────────────────────────────────────────────────
+  dropArea.addEventListener('click', () => fileInput.click());
+  dropArea.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+
+  dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('drag-over'); });
+  dropArea.addEventListener('dragleave', () => dropArea.classList.remove('drag-over'));
+  dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileSelected(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) handleFileSelected(fileInput.files[0]);
+  });
+
+  function handleFileSelected(file) {
+    hideFileError();
+    if (!isPdf(file)) {
+      showFileError('Only PDF files are supported. Please select a valid PDF file.');
+      fileNameDisplay.textContent = '';
+      uploadBtn.disabled = true;
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showFileError('File is too large. Maximum size is 10 MB.');
+      uploadBtn.disabled = true;
+      return;
+    }
+    fileNameDisplay.textContent = `Selected: ${file.name}`;
+    uploadBtn.disabled = false;
+  }
+
+  // ── Upload ────────────────────────────────────────────────────────────────
+  uploadBtn.addEventListener('click', async () => {
+    const file = fileInput.files[0];
+    if (!file) {
+      showFileError('Please select a file before uploading.');
+      return;
+    }
+    if (!isPdf(file)) {
+      showFileError('Only PDF files are supported.');
+      return;
+    }
+
+    showSection('processing');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(`${API_BASE}/upload`, { method: 'POST', body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ message: 'Upload failed' }));
+        throw new Error(err.message || 'Upload failed');
+      }
+      const data = await res.json();
+      populateForm(data);
+      saveError.style.display = 'none';
+      showSection('extracted');
+    } catch (err) {
+      document.getElementById('error-message').textContent =
+        err.message || 'An unexpected error occurred during processing.';
+      showSection('error');
+    }
+  });
+
+  // ── Save ──────────────────────────────────────────────────────────────────
+  dataForm.addEventListener('submit', async e => {
+    e.preventDefault();
+    saveError.style.display = 'none';
+
+    const title = document.getElementById('field-title').value.trim();
+    if (!title) {
+      saveError.textContent = 'Title is required before saving.';
+      saveError.style.display = 'block';
+      document.getElementById('field-title').focus();
+      return;
+    }
+
+    const payload = {
+      title,
+      author:  document.getElementById('field-author').value.trim(),
+      date:    document.getElementById('field-date').value.trim(),
+      content: document.getElementById('field-content').value.trim(),
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Save failed. Please try again.');
+      showSection('success');
+    } catch (err) {
+      saveError.textContent = err.message;
+      saveError.style.display = 'block';
+    }
+  });
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+  document.getElementById('retry-btn').addEventListener('click', resetUpload);
+  document.getElementById('upload-another-btn').addEventListener('click', resetUpload);
+  document.getElementById('new-upload-btn').addEventListener('click', resetUpload);
+</script>
+</body>
+</html>
