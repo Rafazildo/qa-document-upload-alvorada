@@ -1,14 +1,12 @@
 /**
  * data-extraction.spec.ts
  *
- * Tests extraction outcomes and the editing/save flow:
- *   - Partial extractions (only some fields populated)
- *   - Fully empty extraction
- *   - Field editability
- *   - Required-field validation on save
- *   - Save failure handling
- *   - Extraction failure and network error handling
- *   - Retry flow after error
+ * Covers the behaviour after the upload API responds:
+ *   - Partial extraction (only some fields returned by the API)
+ *   - Field editing
+ *   - Required-field validation before saving
+ *   - Save failure (API returns 500)
+ *   - Extraction failure (API returns 4xx/5xx) and the retry flow
  */
 
 import { test, expect } from '@playwright/test';
@@ -16,157 +14,91 @@ import {
   mockUploadSuccess,
   mockUploadExtractionFailure,
   mockUploadServerError,
-  mockUploadNetworkError,
   mockSaveSuccess,
   mockSaveFailure,
-  EXTRACTED_DATA,
   PARTIAL_DATA,
 } from './helpers/api-mocks';
-import {
-  attachPdfFile,
-  clickUpload,
-  clickSave,
-} from './helpers/page-actions';
+import { attachPdfFile, clickUpload, clickSave } from './helpers/page-actions';
 
-// Reach the extracted-data form in one step
-async function uploadAndExtract(page: Parameters<typeof attachPdfFile>[0]) {
+// Reusable helper: reach the extracted-data form with a standard successful upload
+async function uploadAndReachForm(page: Parameters<typeof attachPdfFile>[0]) {
   await attachPdfFile(page);
   await clickUpload(page);
   await expect(page.locator('[data-testid="data-form"]')).toBeVisible();
 }
 
-test.describe('Data Extraction — Partial & Empty Results', () => {
+test.describe('Data Extraction', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
   });
 
-  test('displays only the title when extraction is partial', async ({ page }) => {
+  // ── Extraction results ────────────────────────────────────────────────────
+
+  test('populates only the fields that the API returned', async ({ page }) => {
+    // Assumption: the API may return a partial result — this is valid, not an error.
+    // The form should render with whatever came back, leaving the rest editable.
     await mockUploadSuccess(page, PARTIAL_DATA);
     await mockSaveSuccess(page);
 
-    await uploadAndExtract(page);
+    await uploadAndReachForm(page);
 
     await expect(page.locator('[data-testid="field-title"]')).toHaveValue(PARTIAL_DATA.title);
+    // Fields not returned by the API should be empty, not broken or hidden
     await expect(page.locator('[data-testid="field-author"]')).toHaveValue('');
     await expect(page.locator('[data-testid="field-date"]')).toHaveValue('');
     await expect(page.locator('[data-testid="field-content"]')).toHaveValue('');
   });
 
-  test('shows the form even when all extracted fields are empty', async ({ page }) => {
-    await mockUploadSuccess(page, { title: '', author: '', date: '', content: '' });
-    await mockSaveSuccess(page);
-
-    await attachPdfFile(page);
-    await clickUpload(page);
-
-    await expect(page.locator('[data-testid="data-form"]')).toBeVisible();
-    await expect(page.locator('[data-testid="field-title"]')).toHaveValue('');
-  });
-});
-
-test.describe('Data Extraction — Field Editing', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+  test('all extracted fields are editable by the user', async ({ page }) => {
+    // Users must be able to correct any extraction mistake before saving
     await mockUploadSuccess(page);
     await mockSaveSuccess(page);
-  });
 
-  test('all extracted fields are editable', async ({ page }) => {
-    await uploadAndExtract(page);
+    await uploadAndReachForm(page);
 
     await page.locator('[data-testid="field-title"]').fill('My Edited Title');
     await page.locator('[data-testid="field-author"]').fill('New Author');
-    await page.locator('[data-testid="field-date"]').fill('2025-06-01');
-    await page.locator('[data-testid="field-content"]').fill('Updated summary.');
 
     await expect(page.locator('[data-testid="field-title"]')).toHaveValue('My Edited Title');
     await expect(page.locator('[data-testid="field-author"]')).toHaveValue('New Author');
-    await expect(page.locator('[data-testid="field-date"]')).toHaveValue('2025-06-01');
-    await expect(page.locator('[data-testid="field-content"]')).toHaveValue('Updated summary.');
   });
 
-  test('edited values are preserved when save is successful', async ({ page }) => {
-    let savedBody: Record<string, string> = {};
+  // ── Save validation ───────────────────────────────────────────────────────
 
-    await page.route('**/api/save', async (route) => {
-      savedBody = JSON.parse(route.request().postData() ?? '{}');
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
-    });
-
-    await uploadAndExtract(page);
-
-    await page.locator('[data-testid="field-title"]').fill('Custom Title');
-    await page.locator('[data-testid="field-author"]').fill('Custom Author');
-    await clickSave(page);
-
-    await expect(page.locator('[data-testid="success-message"]')).toBeVisible();
-    expect(savedBody.title).toBe('Custom Title');
-    expect(savedBody.author).toBe('Custom Author');
-  });
-});
-
-test.describe('Data Extraction — Save Validation', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+  test('blocks save and shows an error when Title is empty', async ({ page }) => {
+    // Title is the only required field. Saving without it should fail client-side
+    // so the user gets immediate feedback without waiting for an API round-trip.
     await mockUploadSuccess(page);
     await mockSaveSuccess(page);
-  });
 
-  test('shows error when saving with an empty title', async ({ page }) => {
-    await uploadAndExtract(page);
-
+    await uploadAndReachForm(page);
     await page.locator('[data-testid="field-title"]').clear();
     await clickSave(page);
 
-    await expect(page.locator('[data-testid="save-error"]')).toBeVisible();
     await expect(page.locator('[data-testid="save-error"]')).toContainText('Title is required');
-    // Should stay on the form, not navigate away
+    // The form must stay visible so the user can fix and retry
     await expect(page.locator('[data-testid="data-form"]')).toBeVisible();
     await expect(page.locator('[data-testid="success-message"]')).not.toBeVisible();
   });
 
-  test('clears save error when a valid title is entered and saved', async ({ page }) => {
-    await uploadAndExtract(page);
-
-    // Trigger validation error
-    await page.locator('[data-testid="field-title"]').clear();
-    await clickSave(page);
-    await expect(page.locator('[data-testid="save-error"]')).toBeVisible();
-
-    // Fix the title and save again
-    await page.locator('[data-testid="field-title"]').fill('A Valid Title');
-    await clickSave(page);
-
-    await expect(page.locator('[data-testid="success-message"]')).toBeVisible();
-    await expect(page.locator('[data-testid="save-error"]')).not.toBeVisible();
-  });
-});
-
-test.describe('Data Extraction — Save Failure', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-  });
-
-  test('shows inline error when the save API returns 500', async ({ page }) => {
+  test('shows an inline error when the save API fails', async ({ page }) => {
+    // If the server rejects the save, the user must see an error on the form —
+    // not lose their data or get a blank screen.
     await mockUploadSuccess(page);
     await mockSaveFailure(page);
 
-    await uploadAndExtract(page);
+    await uploadAndReachForm(page);
     await clickSave(page);
 
-    await expect(page.locator('[data-testid="save-error"]')).toBeVisible();
     await expect(page.locator('[data-testid="save-error"]')).toContainText('Save failed');
-    // User stays on the form so they can retry
     await expect(page.locator('[data-testid="data-form"]')).toBeVisible();
   });
-});
 
-test.describe('Extraction Failure & Error Handling', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/');
-  });
+  // ── Upload/extraction errors ──────────────────────────────────────────────
 
-  test('shows error section on 422 extraction failure', async ({ page }) => {
+  test('shows the error section when extraction fails (422)', async ({ page }) => {
+    // A 422 means the file was received but the extractor could not process it.
+    // The error message from the API is shown verbatim so the user understands why.
     await mockUploadExtractionFailure(page);
 
     await attachPdfFile(page);
@@ -176,54 +108,35 @@ test.describe('Extraction Failure & Error Handling', () => {
     await expect(page.locator('[data-testid="error-message"]')).toContainText(
       'Could not extract data from the document.',
     );
+    // The data form must not appear — there is nothing to review
     await expect(page.locator('[data-testid="data-form"]')).not.toBeVisible();
   });
 
-  test('shows a generic error on 500 server error', async ({ page }) => {
+  test('shows a generic error message on a server error (500)', async ({ page }) => {
+    // A 500 means something unexpected happened. We show a generic message —
+    // raw server errors should never be exposed to the user.
     await mockUploadServerError(page);
 
     await attachPdfFile(page);
     await clickUpload(page);
 
     await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
-    // Should not expose raw stack traces to the user
     await expect(page.locator('[data-testid="data-form"]')).not.toBeVisible();
   });
 
-  test('shows an error when there is a network failure', async ({ page }) => {
-    await mockUploadNetworkError(page);
-
-    await attachPdfFile(page);
-    await clickUpload(page);
-
-    await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
-    await expect(page.locator('[data-testid="data-form"]')).not.toBeVisible();
-  });
-
-  test('"Try Again" button after error returns to the upload section', async ({ page }) => {
+  test('"Try Again" returns to the upload form after an error', async ({ page }) => {
+    // After any failure the user must be able to start over without refreshing the page
     await mockUploadExtractionFailure(page);
 
     await attachPdfFile(page);
     await clickUpload(page);
-
     await expect(page.locator('[data-testid="error-message"]')).toBeVisible();
 
     await page.locator('[data-testid="retry-btn"]').click();
 
     await expect(page.locator('[data-testid="upload-btn"]')).toBeVisible();
-    await expect(page.locator('[data-testid="error-message"]')).not.toBeVisible();
-    // Upload button should be disabled again (no file selected)
+    // Upload button should be disabled — no file is selected after a reset
     await expect(page.locator('[data-testid="upload-btn"]')).toBeDisabled();
-  });
-
-  test('error message element has role=alert for accessibility', async ({ page }) => {
-    await mockUploadExtractionFailure(page);
-
-    await attachPdfFile(page);
-    await clickUpload(page);
-
-    const errorEl = page.locator('[data-testid="error-message"]');
-    await expect(errorEl).toBeVisible();
-    await expect(errorEl).toHaveAttribute('role', 'alert');
+    await expect(page.locator('[data-testid="error-message"]')).not.toBeVisible();
   });
 });

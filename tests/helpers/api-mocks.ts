@@ -1,6 +1,17 @@
+/**
+ * api-mocks.ts
+ *
+ * Intercepts HTTP calls to /api/upload and /api/save using Playwright's
+ * page.route() so the tests run without a real backend.
+ *
+ * Each helper registers a route handler for a specific scenario.
+ * Call the relevant mock at the start of a test, before navigating or
+ * clicking Upload, so the handler is in place when the request fires.
+ */
+
 import { Page, Route } from '@playwright/test';
 
-// ── Canonical mock responses ──────────────────────────────────────────────
+// ── Sample data returned by a successful extraction ───────────────────────
 
 export const EXTRACTED_DATA = {
   title:   'Technical Specification v2.1',
@@ -9,6 +20,7 @@ export const EXTRACTED_DATA = {
   content: 'This document describes the architecture of the new data pipeline.',
 };
 
+// Represents a partial extraction — the API returned only the title
 export const PARTIAL_DATA = {
   title:   'Untitled Document',
   author:  '',
@@ -16,9 +28,9 @@ export const PARTIAL_DATA = {
   content: '',
 };
 
-// ── Route helpers ─────────────────────────────────────────────────────────
+// ── Upload mocks ──────────────────────────────────────────────────────────
 
-/** Mock a successful upload → extraction. */
+/** Successful upload: the API extracted data and returned it as JSON. */
 export async function mockUploadSuccess(
   page: Page,
   data: typeof EXTRACTED_DATA = EXTRACTED_DATA,
@@ -32,7 +44,7 @@ export async function mockUploadSuccess(
   });
 }
 
-/** Mock an extraction failure (422 Unprocessable Entity). */
+/** Extraction failure: the file was received but could not be processed (422). */
 export async function mockUploadExtractionFailure(page: Page) {
   await page.route('**/api/upload', (route: Route) => {
     route.fulfill({
@@ -43,7 +55,7 @@ export async function mockUploadExtractionFailure(page: Page) {
   });
 }
 
-/** Mock a server error on upload (500). */
+/** Server error: something unexpected happened on the backend (500). */
 export async function mockUploadServerError(page: Page) {
   await page.route('**/api/upload', (route: Route) => {
     route.fulfill({
@@ -54,14 +66,9 @@ export async function mockUploadServerError(page: Page) {
   });
 }
 
-/** Mock a network-level failure (no response). */
-export async function mockUploadNetworkError(page: Page) {
-  await page.route('**/api/upload', (route: Route) => {
-    route.abort('failed');
-  });
-}
+// ── Save mocks ────────────────────────────────────────────────────────────
 
-/** Mock a successful save. */
+/** Successful save: the API accepted and stored the data. */
 export async function mockSaveSuccess(page: Page) {
   await page.route('**/api/save', (route: Route) => {
     route.fulfill({
@@ -72,7 +79,7 @@ export async function mockSaveSuccess(page: Page) {
   });
 }
 
-/** Mock a save failure (500). */
+/** Save failure: the server rejected the request (500). */
 export async function mockSaveFailure(page: Page) {
   await page.route('**/api/save', (route: Route) => {
     route.fulfill({

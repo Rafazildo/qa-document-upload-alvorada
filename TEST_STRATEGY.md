@@ -2,65 +2,57 @@
 
 ## 1. Overview
 
-This document describes the test strategy for the **Document Upload & Data Extraction** feature. The feature allows users to upload PDF files, have structured data extracted automatically by the system, review and edit that extracted data, and save it to be consumed by downstream product workflows.
+This document covers the test strategy for the **Document Upload & Data Extraction** feature. Users can upload PDF files, have structured data extracted automatically, review and edit that data, and save it to downstream workflows.
 
-The strategy is structured in two main blocks:
+The strategy is split into two blocks:
 
-1. **Manual Testing** — exploratory, acceptance, and cross-cutting concerns that benefit from human judgment
-2. **Test Automation** — regression safety net built with Playwright covering the highest-value scenarios
+1. **Manual Testing** — acceptance test cases, exploratory testing, and cross-cutting concerns
+2. **Test Automation** — Playwright E2E suite covering the highest-value regression scenarios
 
 ---
 
 ## 2. Scope
 
-### In Scope
+### In scope
 
-| Area | Coverage |
+| Area | What we test |
 |---|---|
-| PDF file upload (UI) | File selection, drag-and-drop, type and size validation |
-| Upload API (`POST /api/upload`) | Success response, error codes, payload contract |
-| Processing state | Spinner visibility, section transitions, timeout feedback |
-| Data extraction results | Full extraction, partial extraction, empty result |
-| Extracted data editing | Field editability, required field validation |
-| Save API (`POST /api/save`) | Success, server failure, network failure |
+| PDF file upload (UI) | File selection, type and size validation |
+| Upload API (`POST /api/upload`) | Success, extraction failure, server error |
+| Processing state | Spinner visibility while the API call is pending |
+| Extracted data form | Field population (full and partial), editing, required-field validation |
+| Save API (`POST /api/save`) | Success and failure |
 | Error handling | Inline errors, error section, retry flow |
-| Navigation flows | Upload another, post-save state, return after error |
 
-### Out of Scope
+### Out of scope
 
-- Authentication and authorisation (assumed handled by a separate auth layer)
-- PDF rendering or in-browser preview
+- Authentication (assumed handled by a separate auth layer)
+- PDF rendering/preview inside the browser
 - Downstream systems that consume the saved data
-- Mobile native applications (web responsive layout only)
-- Performance benchmarks beyond basic upload-to-extraction timing in staging
+- Mobile native apps
 
 ---
 
 ## 3. Assumptions
 
-1. The application runs a **web frontend** (HTML/JS/CSS) backed by a **REST API**.
-2. PDF processing may take **up to 30 seconds**; the UI reflects this with a visible loading state.
-3. The API can return **partial extractions** (some fields populated, others empty) — this is a valid success state, not an error.
-4. The maximum allowed file size is **10 MB**, enforced both client-side and server-side.
-5. Authentication is out of scope; user sessions are assumed to be valid during all test executions.
-6. API extraction failures return a structured JSON body: `{ "message": "..." }`.
-7. The primary browser target is **latest stable Chrome**; Firefox and Safari are validated at release time.
+1. The app has a web frontend backed by a REST API.
+2. PDF processing may take up to 30 seconds; the UI shows a loading state while waiting.
+3. The API may return **partial extractions** — some fields populated, others empty. This is valid, not an error.
+4. File size limit is **10 MB**, enforced client-side and server-side.
+5. API extraction failures return `{ "message": "..." }` with a 4xx/5xx status.
+6. User sessions are assumed valid; authentication is not tested here.
 
 ---
 
-## 4. Identified Risks
-
-Understanding risks early drives both the test scenarios chosen and the automation priorities.
+## 4. Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Extraction returns incorrect or partial data silently (no error raised) | High | High | Validate structured output against a schema; surface low-confidence extractions to the user |
-| Large files cause upload timeouts with no feedback | Medium | High | Enforce size limit client-side before upload; show upload progress; implement chunked upload on backend |
-| Malicious PDF uploads (embedded scripts, zip bombs, path traversal) | Medium | Critical | Server-side content-type validation; antivirus scan before processing; sandbox the extractor process |
-| Processing service unavailable | Low | High | Circuit breaker with user-facing error and retry; queue-based processing with status polling |
-| User navigates away mid-extraction and loses context | High | Medium | `beforeunload` warning; consider persisting draft state |
-| API contract drift — frontend and backend become out of sync | Medium | High | OpenAPI spec as source of truth; contract tests (Pact) |
-| Extracted data auto-saved without explicit user review | Low | Medium | Require explicit Save action; never auto-commit without confirmation |
+| Extraction returns incorrect data silently | High | High | Validate output against a schema; surface low-confidence results to the user |
+| Large files cause timeouts with no feedback | Medium | High | Enforce size limit before upload; show progress |
+| Processing service unavailable | Low | High | User-facing error with retry; queue-based fallback |
+| User navigates away mid-extraction | High | Medium | `beforeunload` warning; consider draft persistence |
+| API contract drift (frontend/backend desync) | Medium | High | Share OpenAPI spec; add contract tests when the API stabilises |
 
 ---
 
@@ -70,376 +62,153 @@ Understanding risks early drives both the test scenarios chosen and the automati
 
 ---
 
-## 5. Manual Testing Strategy
+## 5. When and What to Test Manually
 
-Manual testing focuses on areas where human judgment adds value beyond what automation covers: exploratory investigation, edge cases that are hard to simulate programmatically, visual and UX quality, accessibility, and security.
+Manual testing covers areas where human judgment adds value: exploratory investigation, UX quality, cross-browser rendering, and real PDF documents that automated mocks cannot replicate.
 
-### 5.1 When to Run Manual Tests
-
-| Phase | Activity |
+| When | Activity |
 |---|---|
-| Feature development | Developer smoke test before raising a PR |
-| Code review / QA entry | QA engineer validates acceptance criteria |
-| Staging deployment | Full exploratory session with real backend |
-| Pre-release | Cross-browser check + final acceptance |
-| Post-release | Spot check on production (critical happy path only) |
+| Before raising a PR | Developer smoke test on the happy path |
+| QA entry | Run the test cases below against staging |
+| Pre-release | Cross-browser check (Chrome, Firefox, Safari) |
+| Post-release | Spot check the happy path on production |
 
-### 5.2 Test Types Covered Manually
-
-| Type | Approach | Rationale |
-|---|---|---|
-| Exploratory testing | Unscripted sessions in staging against real API | Uncovers unexpected behaviours that scripted tests miss |
-| Acceptance testing | Scripted test cases (this document) | Validates feature meets requirements |
-| Accessibility | Manual + screen reader (NVDA / VoiceOver) + axe DevTools | WCAG 2.1 AA compliance |
-| Visual / UX review | Human judgment on layout, copy, interaction feedback | Cannot be fully captured by pixel comparison alone |
-| Security | Manual file upload of malicious payloads in staging | Verifies server-side defences |
-| Cross-browser | Chrome, Firefox, Safari — final release sign-off | Catches rendering and API handling differences |
-| Exploratory with real PDFs | Various real-world PDF documents | Validates extraction quality beyond mocked responses |
+| Type | Approach |
+|---|---|
+| Acceptance | Scripted test cases in this document |
+| Exploratory | Unscripted sessions in staging with real PDFs |
+| Visual / UX | Human review of layout, copy, and interaction feedback |
+| Cross-browser | Chrome, Firefox, Safari at release time |
 
 ---
 
 ## 6. Manual Test Cases
 
-> **Conventions**
->
-> - **Given** = precondition
-> - **When** = action performed
-> - **Then** = expected observable result
-> - **Priority:** P0 = must pass for release · P1 = should pass · P2 = nice to have
+> **Given** = precondition · **When** = action · **Then** = expected result
+> **P0** = must pass for release · **P1** = should pass
 
 ---
 
 ### TC-HP — Happy Path
 
----
-
-**TC-HP-01 — Successful upload and full data extraction**
-Priority: P0
+**TC-HP-01 — Full upload and extraction flow** `P0`
 
 > Given the user is on the upload page
-> When they click the upload area, select a valid PDF (< 10 MB), and click "Upload & Process"
-> Then a processing spinner is displayed with the message "Processing your document…"
-> And after processing completes, the Extracted Data form appears
-> And the Title, Author, Date, and Content Summary fields are populated with extracted values
-> And no error message is shown
+> When they select a valid PDF and click "Upload & Process"
+> Then a processing spinner appears with the text "Processing your document…"
+> And once complete, the Extracted Data form appears with Title, Author, Date, and Content populated
 
----
+**TC-HP-02 — Edit extracted fields and save** `P0`
 
-**TC-HP-02 — User edits extracted fields before saving**
-Priority: P0
-
-> Given the Extracted Data form is displayed with pre-populated values
-> When the user clears the Author field and types a different name
-> And the user updates the Content Summary
-> Then both fields reflect the new values immediately
-> And no validation error is triggered
-
----
-
-**TC-HP-03 — Successful save after extraction**
-Priority: P0
-
-> Given the Extracted Data form is filled with at least a Title
-> When the user clicks "Save Data"
-> Then a success message "Data saved successfully!" is shown
+> Given the Extracted Data form is visible with pre-filled values
+> When the user edits any field and clicks "Save Data"
+> Then the success message "Data saved successfully!" is shown
 > And the form is no longer visible
-> And no error is displayed
 
----
-
-**TC-HP-04 — Upload another document after successful save**
-Priority: P0
+**TC-HP-03 — Upload another document** `P0`
 
 > Given the success message is displayed
 > When the user clicks "Upload Another Document"
-> Then the upload section is shown again
-> And the Upload button is disabled (no file selected)
-> And the previously filled form fields are cleared
+> Then the upload section reappears, the Upload button is disabled, and the form is cleared
 
----
-
-**TC-HP-05 — Drag and drop a valid PDF**
-Priority: P1
+**TC-HP-04 — Drag and drop a valid PDF** `P1`
 
 > Given the user is on the upload page
-> When they drag a valid PDF file and drop it onto the drop area
-> Then the file name is shown below the drop area
-> And the Upload button becomes enabled
-> And no error is shown
+> When they drag a valid PDF onto the drop area
+> Then the file name appears and the Upload button becomes enabled
 
 ---
 
 ### TC-FV — File Validation
 
----
-
-**TC-FV-01 — Upload button disabled with no file selected**
-Priority: P0
+**TC-FV-01 — No file selected** `P0`
 
 > Given the user is on the upload page with no file selected
-> Then the "Upload & Process" button is visibly disabled and cannot be clicked
+> Then the Upload button is disabled and cannot be clicked
 
----
+**TC-FV-02 — Non-PDF file selected** `P0`
 
-**TC-FV-02 — Select a non-PDF file (e.g. .txt)**
-Priority: P0
+> Given the user selects a `.txt` or `.docx` file
+> Then the error "Only PDF files are supported" appears and the Upload button stays disabled
 
-> Given the user is on the upload page
-> When they select a `.txt` file via the file picker
-> Then an error message "Only PDF files are supported. Please select a valid PDF file." is shown
-> And the Upload button remains disabled
+**TC-FV-03 — PDF exceeds 10 MB** `P0`
 
----
+> Given the user selects a PDF larger than 10 MB
+> Then the error "File is too large. Maximum size is 10 MB." appears and Upload stays disabled
 
-**TC-FV-03 — Select a non-PDF file (e.g. .docx)**
-Priority: P1
+**TC-FV-04 — Recover after invalid selection** `P1`
 
-> Given the user is on the upload page
-> When they select a `.docx` file via the file picker
-> Then the same unsupported-format error is shown
-> And the Upload button remains disabled
-
----
-
-**TC-FV-04 — Select a PDF file over 10 MB**
-Priority: P0
-
-> Given the user is on the upload page
-> When they select a PDF file whose size exceeds 10 MB
-> Then an error message "File is too large. Maximum size is 10 MB." is shown
-> And the Upload button remains disabled
-
----
-
-**TC-FV-05 — Recover after selecting an invalid file**
-Priority: P1
-
-> Given an error is shown because an invalid file was selected
-> When the user selects a valid PDF in its place
-> Then the error message disappears
-> And the file name is shown
-> And the Upload button becomes enabled
-
----
-
-**TC-FV-06 — Drag and drop a non-PDF file**
-Priority: P1
-
-> Given the user is on the upload page
-> When they drag a `.jpg` or `.docx` file and drop it onto the drop area
-> Then the unsupported-format error message is shown
-> And the Upload button remains disabled
+> Given an error is shown for an invalid file
+> When the user selects a valid PDF
+> Then the error disappears and the Upload button becomes enabled
 
 ---
 
 ### TC-PS — Processing State
 
----
+**TC-PS-01 — Spinner visible during processing** `P0`
 
-**TC-PS-01 — Spinner is visible while processing**
-Priority: P0
+> Given the user clicks Upload with a valid PDF
+> Then the spinner and processing message are visible while the API responds
+> And the upload form is hidden so the user cannot re-trigger it
 
-> Given the user has selected a valid PDF and clicked Upload
-> Then while the API call is in progress, the spinner and "Processing your document…" text are visible
-> And the upload form is hidden (the user cannot interact with it during processing)
-
----
-
-**TC-PS-02 — Spinner disappears after successful extraction**
-Priority: P0
+**TC-PS-02 — Spinner disappears after extraction** `P0`
 
 > Given the processing spinner is visible
-> When the API returns a successful extraction response
-> Then the spinner disappears
-> And the Extracted Data form becomes visible with populated fields
-
----
-
-**TC-PS-03 — Processing state is communicated clearly for slow responses**
-Priority: P1
-
-> Given the API takes more than 5 seconds to respond (staging condition)
-> Then the spinner remains visible throughout
-> And the secondary message "This may take a few seconds" is shown
-> And the UI does not appear frozen or broken
+> When the API returns successfully
+> Then the spinner disappears and the Extracted Data form is shown
 
 ---
 
 ### TC-PE — Partial Extraction
 
----
+**TC-PE-01 — API returns only some fields** `P1`
 
-**TC-PE-01 — API returns only the Title field populated**
-Priority: P1
+> Given a PDF is uploaded and the API returns only the Title populated
+> Then the Title field shows the extracted value, and the other fields are empty but editable
+> And the form is displayed (not an error)
 
-> Given a PDF is uploaded
-> When the API returns a response with only `title` populated and all other fields empty
-> Then the Title field shows the extracted value
-> And Author, Date, and Content Summary fields are empty but editable
-> And the form is shown (not an error state)
+**TC-PE-02 — All fields empty** `P1`
 
----
-
-**TC-PE-02 — API returns all fields empty**
-Priority: P1
-
-> Given a PDF is uploaded
-> When the API returns a response with all fields as empty strings
-> Then the Extracted Data form is displayed with all fields empty
-> And the user can fill in values manually
-> And the system does not treat this as an error
+> Given the API returns all fields as empty strings
+> Then the form still displays with all fields empty
+> And the user can fill them in manually and save
 
 ---
 
-**TC-PE-03 — User manually completes a partial extraction and saves**
-Priority: P1
+### TC-EF — Extraction Failure & Errors
 
-> Given the form has a partially extracted result (e.g. only Title is populated)
-> When the user fills in Author, Date, and Content Summary manually
-> And clicks Save
-> Then the save succeeds
-> And the success message is displayed
+**TC-EF-01 — Extraction fails (422)** `P0`
 
----
+> Given the user uploads a PDF and the API returns 422
+> Then the error section shows the API's message and a "Try Again" button
 
-### TC-EF — Extraction Failure & Error Handling
+**TC-EF-02 — Server error (500)** `P0`
 
----
+> Given the API returns 500
+> Then a user-friendly error is displayed — no raw stack traces or technical details
 
-**TC-EF-01 — API returns 422 (extraction failed)**
-Priority: P0
+**TC-EF-03 — "Try Again" resets the flow** `P0`
 
-> Given the user has uploaded a PDF
-> When the API responds with HTTP 422 and the message "Could not extract data from the document."
-> Then the error section is displayed with the API's message
-> And the Extracted Data form is not shown
-> And the "Try Again" button is visible
-
----
-
-**TC-EF-02 — API returns 500 (server error)**
-Priority: P0
-
-> Given the user has uploaded a PDF
-> When the API responds with HTTP 500
-> Then a user-friendly error message is displayed (not a raw stack trace or technical detail)
-> And the "Try Again" button is visible
-
----
-
-**TC-EF-03 — Network failure during upload**
-Priority: P1
-
-> Given the user has clicked Upload
-> When the network connection is lost or times out before the API responds
-> Then an appropriate error message is shown to the user
-> And the "Try Again" button is visible
-> And the page does not crash or show an unhandled exception
-
----
-
-**TC-EF-04 — "Try Again" returns to the upload state**
-Priority: P0
-
-> Given an error message is displayed after a failed upload
+> Given the error section is visible
 > When the user clicks "Try Again"
-> Then the upload section is shown again
-> And the error message is hidden
-> And the Upload button is disabled (no file selected yet)
+> Then the upload section reappears with the Upload button disabled
 
 ---
 
 ### TC-DV — Data Editing & Save Validation
 
----
+**TC-DV-01 — Save blocked without a Title** `P0`
 
-**TC-DV-01 — Save with empty Title field**
-Priority: P0
+> Given the Extracted Data form is visible
+> When the user clears the Title field and clicks Save
+> Then the validation error "Title is required" is shown inline and the user stays on the form
 
-> Given the Extracted Data form is shown with all fields pre-populated
-> When the user clears the Title field and clicks "Save Data"
-> Then a validation error "Title is required before saving." is displayed inline
-> And the Title field receives focus
-> And the user remains on the form (no navigation away)
-> And the success message is not shown
+**TC-DV-02 — Save API fails** `P1`
 
----
-
-**TC-DV-02 — Save succeeds after correcting the Title**
-Priority: P0
-
-> Given a validation error is shown because Title was empty
-> When the user types a valid title and clicks "Save Data" again
-> Then the error disappears
-> And the save succeeds
-> And the success message is shown
-
----
-
-**TC-DV-03 — Save API returns 500**
-Priority: P1
-
-> Given the Extracted Data form is filled with valid data
-> When the save API returns HTTP 500
-> Then an inline error is shown within the form
-> And the user remains on the form so they can retry
-> And their edited values are preserved
-
----
-
-### TC-ACC — Accessibility
-
----
-
-**TC-ACC-01 — Error messages are announced by screen readers**
-Priority: P1
-
-> Given a screen reader (NVDA on Windows / VoiceOver on macOS) is active
-> When an error message appears (file validation, extraction failure, save error)
-> Then the screen reader announces the error without requiring the user to navigate to it
-> (Verified by the `role="alert"` attribute on error elements)
-
----
-
-**TC-ACC-02 — All interactive elements are keyboard-accessible**
-Priority: P1
-
-> Given the user navigates using only the keyboard (Tab, Enter, Space)
-> Then they can: open the file picker, trigger upload, fill all form fields, and click Save
-> Without requiring a mouse at any point
-
----
-
-**TC-ACC-03 — No critical axe violations**
-Priority: P1
-
-> Given the page is open in any of its states (upload, processing, extracted, error, success)
-> When an automated axe audit is run (via browser extension or axe-playwright)
-> Then zero critical or serious WCAG 2.1 AA violations are reported
-
----
-
-### TC-SEC — Security (Staging Only)
-
----
-
-**TC-SEC-01 — Upload a file with a malicious extension disguised as PDF**
-Priority: P1
-
-> Given a file named `exploit.pdf` that is actually executable content
-> When it is uploaded to the staging environment
-> Then the server rejects the file based on content inspection (not just extension/MIME)
-> And no error leak or server information is exposed in the response
-
----
-
-**TC-SEC-02 — Upload an extremely large file to test zip bomb / resource exhaustion**
-Priority: P1
-
-> Given a file that expands massively during processing (e.g. a decompression bomb)
-> When uploaded to the staging environment
-> Then the system gracefully rejects or limits processing
-> And the server remains responsive to other requests
+> Given the save API returns 500
+> Then an inline error appears on the form
+> And the user's edited values are preserved so they can retry
 
 ---
 
@@ -449,192 +218,67 @@ Priority: P1
 
 ---
 
-## 7. Automation Strategy
+## 7. Automation Approach
 
-Automation targets **regression safety** for the scenarios that are well-defined, stable, and would be expensive to re-run manually on every pull request. It complements — not replaces — the manual work above.
-
-### 7.1 Testing Pyramid
+The automated suite targets **regression safety** — scenarios that are well-defined, stable, and too slow to re-run manually on every PR. It complements manual testing; it doesn't replace it.
 
 ```
-         /\
-        /E2E\          ← Playwright — implemented in this repo
-       /------\
-      /  Integ  \      ← API contract tests (recommended: Supertest / Pact)
-     /------------\
-    /  Unit Tests   \  ← Validation logic, utilities (recommended: Vitest)
-   /----------------\
+     /\
+    /E2E\        ← Playwright (this repo)
+   /------\
+  / Integ  \     ← API contract tests (future: Supertest)
+ /----------\
+/ Unit Tests  \  ← Validators, utilities (future: Vitest)
 ```
 
-The current suite sits at the **E2E layer**, exercising the full browser-to-API flow with a mocked backend. This gives maximum confidence in user-facing behaviour with minimal infrastructure.
+**Why API mocking?** Real PDF processing is slow and non-deterministic. By intercepting HTTP calls with `page.route()`, the suite runs in under 30 seconds, needs no backend, and produces deterministic results. Real API integration is validated separately in staging.
 
-### 7.2 What to Automate First (Priority Order)
-
-| Priority | Scenario group | Reason |
-|---|---|---|
-| P0 | Happy path — upload, extract, edit, save | Core business flow; must never regress |
-| P0 | File type and size validation | Pure frontend logic; fast to run; high defect probability |
-| P0 | Extraction failure and retry flow | User trust depends on clear error feedback |
-| P1 | Partial extraction handling | Edge case that is hard to reproduce manually with a real API |
-| P1 | Save failure inline error | Regression-prone; easily broken by UI refactors |
-| P2 | Cross-browser (Firefox, WebKit) | Adds confidence at low cost once Chromium suite is stable |
-| P2 | Accessibility (axe-playwright) | Prevents silent regressions in ARIA attributes |
-
-### 7.3 Tooling
-
-| Tool | Role |
-|---|---|
-| **Playwright** | E2E browser automation framework |
-| `page.route()` | Network-level API mocking — no backend required |
-| **GitHub Actions** | CI pipeline — runs on every PR |
-| Playwright HTML Reporter | Test result visualisation |
-| axe-playwright *(future)* | Automated accessibility auditing |
-| Supertest / Pact *(future)* | API integration and contract testing |
-
-### 7.4 API Mocking Rationale
-
-Real PDF processing is slow (seconds), non-deterministic, and requires backend infrastructure. By intercepting all API calls at the network layer with `page.route()`, the suite:
-
-- Runs in **< 30 seconds** for 28 tests
-- Is **fully deterministic** — no flakiness from real extraction variability
-- Exercises the **complete frontend logic** including state transitions, error handling, and form population
-- Requires **zero backend setup** — any developer can run it immediately after `npm install`
-
-Real API integration is validated separately (recommended: Supertest in staging CI).
-
-### 7.5 Selector Strategy
-
-All automated tests use `data-testid` attributes as selectors. This decouples tests from CSS class names and DOM structure, meaning UI refactors do not break the test suite unless observable behaviour actually changes.
+**Selectors:** All tests use `data-testid` attributes, decoupling them from CSS and DOM structure.
 
 ---
 
-## 8. Automated Test Suite Overview
+## 8. Test Files
 
-The suite is organised into three spec files, each with a focused responsibility.
-
-### 8.1 `upload-flow.spec.ts` — Happy Path (7 tests)
-
-Covers the end-to-end user journey from file selection through to the success state.
-
-| Test | What it validates |
+| File | Focus |
 |---|---|
-| Shows upload section on initial load | Entry state is correct |
-| Upload button disabled until file selected | Button state driven by selection |
-| Shows processing state while API is in-flight | Intermediate loading state is visible |
-| Populates form with extracted data | All fields receive correct values from API |
-| Saves data and shows success message | Save flow completes successfully |
-| Returns to upload state via "Upload Another" | Navigation after extraction works |
-| Returns to upload state after save | Navigation after save works |
-| Verifies save request payload | Edited values are correctly sent to the API |
-
-### 8.2 `file-validation.spec.ts` — File Validation (7 tests)
-
-Covers all client-side validation rules for file selection.
-
-| Test | What it validates |
-|---|---|
-| Upload button disabled on load | Initial disabled state |
-| Accepts valid PDF — button enabled | Happy path selection |
-| Rejects `.txt` file | Non-PDF type rejection |
-| Rejects `.docx` file | Non-PDF type rejection (different MIME) |
-| Rejects `.jpg` file | Non-PDF type rejection (image) |
-| Rejects oversized PDF (> 10 MB) | Size limit enforcement |
-| Clears error when valid PDF replaces invalid | Error recovery UX |
-| Error element has `role="alert"` | Accessibility contract |
-
-### 8.3 `data-extraction.spec.ts` — Extraction, Editing & Errors (14 tests)
-
-Covers partial extractions, field editing, save validation, and all error paths.
-
-| Test | What it validates |
-|---|---|
-| Partial extraction — only title populated | Form handles partial API response |
-| All-empty extraction | Form displayed even with no data |
-| All fields are editable | No read-only locks on extracted data |
-| Edited values sent on save | Form values reflected in save payload |
-| Save blocked when title is empty | Required-field validation |
-| Error clears after valid title entered | Validation error recovery |
-| Save API 500 — inline error shown | Save failure does not lose the form |
-| Upload API 422 — error section shown | Extraction failure state |
-| Upload API 500 — generic error shown | Server error state |
-| Network failure — error shown | Network error state |
-| "Try Again" returns to upload | Error recovery navigation |
-| Error element has `role="alert"` | Accessibility contract |
+| `upload-flow.spec.ts` | Full happy path: select → upload → extract → edit → save |
+| `file-validation.spec.ts` | Client-side file type and size validation |
+| `data-extraction.spec.ts` | Partial extraction, field editing, save validation, error handling |
 
 ---
 
-## 9. Test Data Strategy
+## 9. Test Data
 
-| Data | Source | Rationale |
-|---|---|---|
-| Valid PDF | Programmatic buffer (PDF magic bytes) | No binary committed to the repo; works offline |
-| Invalid file types | Programmatic buffers with correct MIME/extension | Covers `.txt`, `.docx`, `.jpg` scenarios |
-| Oversized PDF | 10 MB + 1 byte buffer with PDF header | Avoids storing large files in the repo |
-| API success response | `page.route()` fulfil with fixture JSON | Deterministic; tests field-population logic |
-| API error responses | `page.route()` fulfil with specific HTTP codes | Controlled simulation of 422, 500, network abort |
-| Edge-case strings | Hard-coded in test (long titles, special chars) | No external dependency |
+| Data | How it's created |
+|---|---|
+| Valid PDF | Programmatic buffer with PDF magic bytes — no binary in the repo |
+| Invalid file types | Small buffer with the correct MIME/extension for each type |
+| Oversized PDF | 10 MB + 1 byte buffer with a PDF header |
+| API responses | `page.route()` with fixture JSON or specific HTTP status codes |
 
 ---
 
-## 10. Running the Tests
+## 10. Release Readiness
 
-```bash
-# Install dependencies
-npm install
+The feature is ready to ship when:
 
-# Install Playwright browsers
-npx playwright install chromium
+### Automated (CI gate)
 
-# Run full suite (headless)
-npm test
+- [ ] All E2E tests pass with 0 failures
+- [ ] No open P0 bugs
 
-# Run with visible browser
-npm run test:headed
+### Manual (staging sign-off)
 
-# Open interactive Playwright UI
-npm run test:ui
-
-# View HTML report after a run
-npm run report
-```
-
-Playwright automatically starts the mock app server before running and shuts it down after.
-
----
-
-## 11. Quality / Release Readiness Criteria
-
-The feature is considered **release-ready** when all of the following are met:
-
-### Automated gates (must pass in CI)
-
-- [ ] All P0 automated E2E tests pass — 0 failures, 0 flaky tests
-- [ ] No open P0 or P1 defects
-
-### Manual sign-off (must be completed in staging)
-
-- [ ] All TC-HP, TC-FV, TC-PS, TC-EF, and TC-DV test cases pass
-- [ ] Exploratory session completed against real API with at least 5 different real PDF documents
-- [ ] Accessibility audit passes — 0 critical or serious axe violations
+- [ ] All P0 test cases above pass
+- [ ] Exploratory session run with at least 3 real PDF documents
 - [ ] Cross-browser check passed on Chrome, Firefox, and Safari
-- [ ] Security review signed off (malicious upload scenarios)
+- [ ] Average upload-to-extraction time is acceptable (< 10 s for typical documents)
 
-### Process gates
+### Process
 
-- [ ] API contract matches frontend expectations
 - [ ] Code review approved
-- [ ] Product Owner has accepted the feature in staging
-- [ ] Average upload-to-extraction time < 5 s for typical documents (measured in staging)
+- [ ] Product Owner accepted in staging
 
 ---
 
-## 12. Test Environments
-
-| Environment | Purpose | Backend |
-| --- | --- | --- |
-| Local | Developer smoke test; automated suite | Mocked via `page.route()` |
-| Staging | Integration, exploratory, performance, security | Real API |
-| CI (GitHub Actions) | Automated regression on every PR | Mocked via `page.route()` |
-
----
-
-*Last updated: 2026-04-07*
+*Last updated: 2026-04-08*

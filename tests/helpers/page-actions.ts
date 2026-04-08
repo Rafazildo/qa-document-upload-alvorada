@@ -1,6 +1,15 @@
+/**
+ * page-actions.ts
+ *
+ * Reusable helpers for common UI interactions.
+ * Keeping these here avoids repeating low-level Playwright calls in every test
+ * and makes the test files read like plain English.
+ */
+
 import { Page } from '@playwright/test';
 
-// Minimal valid PDF bytes (≈ 680 bytes)
+// Minimal valid PDF content (~680 bytes).
+// Using a programmatic buffer means we don't need to commit a binary fixture file.
 const MINIMAL_PDF = Buffer.from(
   '%PDF-1.0\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj ' +
   '2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj ' +
@@ -14,13 +23,8 @@ const MINIMAL_PDF = Buffer.from(
   'startxref\n190\n%%EOF',
 );
 
-/**
- * Attach a synthetic PDF file to the hidden file input.
- */
-export async function attachPdfFile(
-  page: Page,
-  fileName = 'test-document.pdf',
-): Promise<void> {
+/** Attach a valid PDF to the (hidden) file input. */
+export async function attachPdfFile(page: Page, fileName = 'test-document.pdf') {
   await page.locator('[data-testid="file-input"]').setInputFiles({
     name: fileName,
     mimeType: 'application/pdf',
@@ -28,13 +32,8 @@ export async function attachPdfFile(
   });
 }
 
-/**
- * Attach a non-PDF file (plain text) to the file input.
- */
-export async function attachNonPdfFile(
-  page: Page,
-  fileName = 'document.txt',
-): Promise<void> {
+/** Attach a plain-text file — used to trigger the "wrong file type" validation path. */
+export async function attachNonPdfFile(page: Page, fileName = 'document.txt') {
   await page.locator('[data-testid="file-input"]').setInputFiles({
     name: fileName,
     mimeType: 'text/plain',
@@ -42,31 +41,25 @@ export async function attachNonPdfFile(
   });
 }
 
-/**
- * Attach an oversized file (> 10 MB) to the file input.
- */
-export async function attachOversizedPdfFile(page: Page): Promise<void> {
-  const tenMbPlusOne = Buffer.alloc(10 * 1024 * 1024 + 1, 0);
-  // Prepend PDF header so the name/mime passes the PDF check
-  tenMbPlusOne.write('%PDF-1.0', 0, 'ascii');
+/** Attach a PDF that exceeds the 10 MB size limit — triggers the size validation path. */
+export async function attachOversizedPdfFile(page: Page) {
+  // Allocate 10 MB + 1 byte and prepend a PDF header so only the size check fails
+  const oversized = Buffer.alloc(10 * 1024 * 1024 + 1, 0);
+  oversized.write('%PDF-1.0', 0, 'ascii');
 
   await page.locator('[data-testid="file-input"]').setInputFiles({
     name: 'oversized.pdf',
     mimeType: 'application/pdf',
-    buffer: tenMbPlusOne,
+    buffer: oversized,
   });
 }
 
-/**
- * Click Upload and wait for the processing section to appear.
- */
-export async function clickUpload(page: Page): Promise<void> {
+/** Click the Upload button. */
+export async function clickUpload(page: Page) {
   await page.locator('[data-testid="upload-btn"]').click();
 }
 
-/**
- * Click Save and wait for a result.
- */
-export async function clickSave(page: Page): Promise<void> {
+/** Click the Save button. */
+export async function clickSave(page: Page) {
   await page.locator('[data-testid="save-btn"]').click();
 }
