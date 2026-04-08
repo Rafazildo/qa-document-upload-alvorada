@@ -1,4 +1,4 @@
-# QA Engineer Take-Home — Document Upload & Data Extraction
+# Document Upload & Data Extraction
 
 Automated test suite for the **Document Upload & Data Extraction** feature, built with [Playwright](https://playwright.dev).
 
