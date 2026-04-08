@@ -14,10 +14,10 @@ import { Page, Route } from '@playwright/test';
 // ── Sample data returned by a successful extraction ───────────────────────
 
 export const EXTRACTED_DATA = {
-  title:   'Technical Specification v2.1',
-  author:  'Jane Smith',
-  date:    '2024-03-15',
-  content: 'This document describes the architecture of the new data pipeline.',
+  title:   'QA engineering for interviews',
+  author:  'Rafael Oliveira',
+  date:    '2026-04-08',
+  content: 'This document describes how to do your best in QA interviews.',
 };
 
 // Represents a partial extraction — the API returned only the title
