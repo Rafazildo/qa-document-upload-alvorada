@@ -98,6 +98,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > When they select a valid PDF and click "Upload & Process"
 >
 > Then a processing spinner appears with the text "Processing your document…"
+>
 > And once complete, the Extracted Data form appears with Title, Author, Date, and Content populated
 
 **TC-HP-02 — Edit extracted fields and save** `P0`
@@ -107,6 +108,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > When the user edits any field and clicks "Save Data"
 >
 > Then the success message "Data saved successfully!" is shown
+>
 > And the form is no longer visible
 
 **TC-HP-03 — Upload another document** `P0`
@@ -164,6 +166,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > Given the user clicks Upload with a valid PDF
 >
 > Then the spinner and processing message are visible while the API responds
+>
 > And the upload form is hidden so the user cannot re-trigger it
 
 **TC-PS-02 — Spinner disappears after extraction** `P0`
@@ -183,6 +186,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > Given a PDF is uploaded and the API returns only the Title populated
 >
 > Then the Title field shows the extracted value, and the other fields are empty but editable
+>
 > And the form is displayed (not an error)
 
 **TC-PE-02 — All fields empty** `P1`
@@ -190,6 +194,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > Given the API returns all fields as empty strings
 >
 > Then the form still displays with all fields empty
+>
 > And the user can fill them in manually and save
 
 ---
@@ -233,6 +238,7 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 > Given the save API returns 500
 >
 > Then an inline error appears on the form
+>
 > And the user's edited values are preserved so they can retry
 
 ---
