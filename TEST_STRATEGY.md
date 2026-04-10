@@ -94,27 +94,35 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-HP-01 — Full upload and extraction flow** `P0`
 
 > Given the user is on the upload page
+>
 > When they select a valid PDF and click "Upload & Process"
+>
 > Then a processing spinner appears with the text "Processing your document…"
 > And once complete, the Extracted Data form appears with Title, Author, Date, and Content populated
 
 **TC-HP-02 — Edit extracted fields and save** `P0`
 
 > Given the Extracted Data form is visible with pre-filled values
+>
 > When the user edits any field and clicks "Save Data"
+>
 > Then the success message "Data saved successfully!" is shown
 > And the form is no longer visible
 
 **TC-HP-03 — Upload another document** `P0`
 
 > Given the success message is displayed
+>
 > When the user clicks "Upload Another Document"
+>
 > Then the upload section reappears, the Upload button is disabled, and the form is cleared
 
 **TC-HP-04 — Drag and drop a valid PDF** `P1`
 
 > Given the user is on the upload page
+>
 > When they drag a valid PDF onto the drop area
+>
 > Then the file name appears and the Upload button becomes enabled
 
 ---
@@ -124,22 +132,27 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-FV-01 — No file selected** `P0`
 
 > Given the user is on the upload page with no file selected
+>
 > Then the Upload button is disabled and cannot be clicked
 
 **TC-FV-02 — Non-PDF file selected** `P0`
 
 > Given the user selects a `.txt` or `.docx` file
+>
 > Then the error "Only PDF files are supported" appears and the Upload button stays disabled
 
 **TC-FV-03 — PDF exceeds 10 MB** `P0`
 
 > Given the user selects a PDF larger than 10 MB
+>
 > Then the error "File is too large. Maximum size is 10 MB." appears and Upload stays disabled
 
 **TC-FV-04 — Recover after invalid selection** `P1`
 
 > Given an error is shown for an invalid file
+>
 > When the user selects a valid PDF
+>
 > Then the error disappears and the Upload button becomes enabled
 
 ---
@@ -149,13 +162,16 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-PS-01 — Spinner visible during processing** `P0`
 
 > Given the user clicks Upload with a valid PDF
+>
 > Then the spinner and processing message are visible while the API responds
 > And the upload form is hidden so the user cannot re-trigger it
 
 **TC-PS-02 — Spinner disappears after extraction** `P0`
 
 > Given the processing spinner is visible
+>
 > When the API returns successfully
+>
 > Then the spinner disappears and the Extracted Data form is shown
 
 ---
@@ -165,12 +181,14 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-PE-01 — API returns only some fields** `P1`
 
 > Given a PDF is uploaded and the API returns only the Title populated
+>
 > Then the Title field shows the extracted value, and the other fields are empty but editable
 > And the form is displayed (not an error)
 
 **TC-PE-02 — All fields empty** `P1`
 
 > Given the API returns all fields as empty strings
+>
 > Then the form still displays with all fields empty
 > And the user can fill them in manually and save
 
@@ -181,17 +199,21 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-EF-01 — Extraction fails (422)** `P0`
 
 > Given the user uploads a PDF and the API returns 422
+>
 > Then the error section shows the API's message and a "Try Again" button
 
 **TC-EF-02 — Server error (500)** `P0`
 
 > Given the API returns 500
+>
 > Then a user-friendly error is displayed — no raw stack traces or technical details
 
 **TC-EF-03 — "Try Again" resets the flow** `P0`
 
 > Given the error section is visible
+>
 > When the user clicks "Try Again"
+>
 > Then the upload section reappears with the Upload button disabled
 
 ---
@@ -201,12 +223,15 @@ Manual testing covers areas where human judgment adds value: exploratory investi
 **TC-DV-01 — Save blocked without a Title** `P0`
 
 > Given the Extracted Data form is visible
+>
 > When the user clears the Title field and clicks Save
+>
 > Then the validation error "Title is required" is shown inline and the user stays on the form
 
 **TC-DV-02 — Save API fails** `P1`
 
 > Given the save API returns 500
+>
 > Then an inline error appears on the form
 > And the user's edited values are preserved so they can retry
 
